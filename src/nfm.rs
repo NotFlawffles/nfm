@@ -349,7 +349,7 @@ impl NFM {
         stdout()
             .execute(cursor::MoveToColumn(4))?
             .execute(style::Print(
-                " ".repeat(self.search_buffer.len() + extra_size).underlined(),
+                " ".repeat(self.search_buffer.len() + if extra_size == 0 { 0 } else { extra_size - 1 }).underlined(),
             ))?
             .execute(cursor::MoveToColumn(1))?
             .execute(style::Print(""))?
