@@ -1,6 +1,8 @@
 # NFM
 NFM or NotFlawffles' file manager is a utility i made primarly to boost productivity and speed working with files. (WIP)
 
+## Showcase
+
 Renaming files is similar to that in [Dired](https://www.gnu.org/software/emacs/manual/html_node/emacs/Dired.html).
 
 ![screenshot-1](https://github.com/NotFlawffles/nfm/blob/main/res/screenshot-1.png)
