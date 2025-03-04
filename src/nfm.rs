@@ -349,13 +349,13 @@ impl NFM {
         stdout()
             .execute(cursor::MoveToColumn(4))?
             .execute(style::Print(
-                " ".repeat(self.search_buffer.len() + extra_size),
+                " ".repeat(self.search_buffer.len() + extra_size).underlined(),
             ))?
             .execute(cursor::MoveToColumn(1))?
             .execute(style::Print(""))?
             .execute(cursor::MoveRight(2))?
             .execute(style::PrintStyledContent(
-                self.search_buffer.clone().blue().bold(),
+                format!("{:<space$}", self.search_buffer, space = (terminal::size()?.0 as usize - 4) * if self.search_buffer.len() == 0 { 0 } else { 1 }).clone().underlined(),
             ))?
             .execute(cursor::MoveTo(
                 previous_cursor_position.0,
