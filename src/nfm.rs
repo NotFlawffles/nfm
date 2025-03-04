@@ -290,7 +290,7 @@ impl NFM {
 
         stdout().queue(cursor::MoveTo(4, terminal::size()?.1 - 1))?;
 
-        self.redraw_search_buffer(0)?;
+        self.redraw_search_buffer()?;
         stdout().queue(cursor::RestorePosition)?.flush()?;
         Ok(entries)
     }
@@ -343,13 +343,13 @@ impl NFM {
         Ok(())
     }
 
-    fn redraw_search_buffer(&self, extra_size: usize) -> Result<()> {
+    fn redraw_search_buffer(&self) -> Result<()> {
         let previous_cursor_position = cursor::position()?;
 
         stdout()
             .execute(cursor::MoveToColumn(4))?
             .execute(style::Print(
-                " ".repeat(self.search_buffer.len() + if extra_size == 0 { 0 } else { extra_size - 1 }).underlined(),
+                " ".repeat(self.search_buffer.len()).underlined(),
             ))?
             .execute(cursor::MoveToColumn(1))?
             .execute(style::Print(""))?
@@ -631,7 +631,7 @@ impl NFM {
                             .execute(cursor::MoveTo(4, terminal::size()?.1 - 1))?
                             .execute(cursor::Show)?;
 
-                        self.redraw_search_buffer(terminal::size()?.0 as usize - 4)?;
+                        self.redraw_search_buffer()?;
                     }
 
                     Action::ToggleHelp => {
@@ -818,7 +818,7 @@ impl NFM {
                                 self.move_left()?;
                                 self.search_buffer
                                     .remove(cursor::position()?.0 as usize - 4);
-                                self.redraw_search_buffer(1)?;
+                                self.redraw_search_buffer()?;
                             }
 
                             event::KeyCode::Enter => {
@@ -840,7 +840,7 @@ impl NFM {
                                     .insert(cursor::position()?.0 as usize - 4, *character);
 
                                 self.move_right(&self.search_buffer)?;
-                                self.redraw_search_buffer(0)?;
+                                self.redraw_search_buffer()?;
                             }
 
                             _ => {}
