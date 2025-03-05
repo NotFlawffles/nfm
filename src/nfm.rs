@@ -1,6 +1,6 @@
 use std::{
     env::{current_dir, set_current_dir},
-    fs::{create_dir, read_dir, remove_dir_all, remove_file, rename, DirEntry},
+    fs::{create_dir, read_dir, remove_dir_all, remove_file, rename},
     io::{stdout, Result, Write},
     process::Command,
     time::Duration,
@@ -9,17 +9,17 @@ use std::{
 use crossterm::{
     cursor,
     event::{self},
-    style::{self, StyledContent, Stylize},
+    style::{self, Stylize},
     terminal::{self},
     ExecutableCommand, QueueableCommand,
 };
 
-use crate::{action::Action, mode::Mode, window::Window};
+use crate::{action::Action, entry::Entry, mode::Mode, window::Window};
 
 pub struct NFM {
     selection: u16,
     scroll: u16,
-    entries: Vec<DirEntry>,
+    entries: Vec<Entry>,
     actions: Vec<Action>,
     mode: Mode,
     show_hidden: bool,
@@ -147,11 +147,11 @@ impl NFM {
         }
     }
 
-    fn fetch_entries_sorted(&self) -> Result<Vec<DirEntry>> {
+    fn fetch_entries_sorted(&self) -> Result<Vec<Entry>> {
         let mut entries = read_dir(".")?
-            .map(|e| e.unwrap())
+            .map(|e| Entry::new(e.unwrap()))
             .filter(|e| {
-                let file_name = e.file_name().into_string().unwrap().to_lowercase();
+                let file_name = e.base.file_name().into_string().unwrap().to_lowercase();
                 file_name.contains(&self.search_buffer.to_lowercase())
                     && if self.show_hidden {
                         true
@@ -160,94 +160,13 @@ impl NFM {
                     }
             })
             .collect::<Vec<_>>();
-        entries.sort_by_key(|e| e.file_name());
+
+        entries.sort_by_key(|e| e.base.file_name());
 
         Ok(entries)
     }
 
-    fn get_entry_icon(&self, entry: &DirEntry) -> Result<StyledContent<&str>> {
-        let file_name = entry.file_name();
-        let file_name_as_str = file_name.to_str().unwrap();
-        let file_type = entry.file_type()?;
-
-        if file_name_as_str.ends_with(".txt") {
-            return Ok("".stylize());
-        } else if file_name_as_str.ends_with(".json") {
-            return Ok("".blue());
-        } else if file_name_as_str.ends_with(".ninja") {
-            return Ok("󰝴".black());
-        } else if file_name_as_str == "CMakeLists.txt" {
-            return Ok("".dark_magenta());
-        } else if file_name_as_str.ends_with(".c") {
-            return Ok("".blue());
-        } else if file_name_as_str.ends_with(".cpp") {
-            return Ok("".dark_blue());
-        } else if file_name_as_str.ends_with(".h") || file_name_as_str.ends_with(".hpp") {
-            return Ok("".magenta());
-        } else if file_name_as_str.ends_with(".py") {
-            return Ok("".yellow());
-        } else if file_name_as_str.ends_with(".ml") {
-            return Ok("".yellow());
-        } else if file_name_as_str.ends_with(".go") {
-            return Ok("".blue());
-        } else if file_name_as_str.ends_with(".7z") || file_name_as_str.ends_with(".zip") {
-            return Ok("".yellow());
-        } else if file_name_as_str.ends_with(".md") {
-            return Ok("".green());
-        } else if file_name_as_str.ends_with(".vim") {
-            return Ok("".dark_green());
-        } else if file_name_as_str.ends_with(".lua") {
-            return Ok("".blue());
-        } else if file_name_as_str.ends_with(".conf")
-            || file_name_as_str.ends_with(".ini")
-            || file_name_as_str.ends_with(".toml")
-            || file_name_as_str.ends_with("lock")
-        {
-            return Ok("".grey());
-        } else if file_name_as_str.ends_with(".list") {
-            return Ok("".dark_green());
-        } else if file_name_as_str.ends_with(".rs") {
-            return Ok("".red());
-        } else if file_name_as_str.ends_with(".png") {
-            return Ok("󰋩".yellow());
-        } else if file_name_as_str.ends_with(".odin") {
-            return Ok("Ø".blue());
-        }
-
-        if file_type.is_file() {
-            Ok("".grey())
-        } else if file_type.is_dir() {
-            Ok("".dark_blue())
-        } else {
-            Ok("?".dark_grey())
-        }
-    }
-
-    fn draw_entry(&self, index: u16, entry: &DirEntry) -> Result<()> {
-        stdout().queue(style::PrintStyledContent(
-            if self.selection == index as u16 {
-                format!(
-                    " {}  {:<width$}",
-                    self.get_entry_icon(entry)?,
-                    entry.file_name().to_str().unwrap(),
-                    width = terminal::size()?.0 as usize - 4
-                )
-                .on_black()
-                .bold()
-            } else {
-                format!(
-                    " {}  {}",
-                    self.get_entry_icon(entry)?,
-                    entry.file_name().to_str().unwrap(),
-                )
-                .stylize()
-            },
-        ))?;
-
-        Ok(())
-    }
-
-    fn draw(&self) -> Result<Vec<DirEntry>> {
+    fn draw(&self) -> Result<Vec<Entry>> {
         let entries = self.fetch_entries_sorted()?;
         let current_dir = current_dir()?;
 
@@ -259,7 +178,7 @@ impl NFM {
                 format!(
                     " In: {}{:>padding$}",
                     current_dir.to_str().unwrap().blue().italic(),
-                    "? for help",
+                    "Press '?' to open help menu",
                     padding =
                         terminal::size()?.0 as usize - current_dir.to_str().unwrap().len() - 6,
                 )
@@ -272,7 +191,7 @@ impl NFM {
         for (index, entry) in entries.iter().enumerate() {
             drawn = true;
 
-            if index as u16 > terminal::size()?.1 + self.scroll - 4 {
+            if index as u16 > terminal::size()?.1 + self.scroll - 5 {
                 break;
             }
 
@@ -280,7 +199,7 @@ impl NFM {
                 continue;
             }
 
-            self.draw_entry(index as u16, entry)?;
+            entry.draw(self.selection, index)?;
             stdout().queue(cursor::MoveToNextLine(1))?;
         }
 
@@ -355,7 +274,14 @@ impl NFM {
             .execute(style::Print(""))?
             .execute(cursor::MoveRight(2))?
             .execute(style::PrintStyledContent(
-                format!("{:<space$}", self.search_buffer, space = (terminal::size()?.0 as usize - 4) * if self.search_buffer.len() == 0 { 0 } else { 1 }).clone().underlined(),
+                format!(
+                    "{:<space$}",
+                    self.search_buffer,
+                    space = (terminal::size()?.0 as usize - 4)
+                        * if self.search_buffer.len() == 0 { 0 } else { 1 }
+                )
+                .clone()
+                .underlined(),
             ))?
             .execute(cursor::MoveTo(
                 previous_cursor_position.0,
@@ -377,69 +303,75 @@ impl NFM {
         );
         window.draw()?;
 
-        stdout().queue(cursor::MoveTo(window.position.0 + 2, window.position.1 + 1))?;
+        stdout()
+            .queue(cursor::MoveTo(
+                window.position.0 + window.size.0 / 2,
+                window.position.1 + 1,
+            ))?
+            .queue(style::Print("Help"))?
+            .queue(cursor::MoveTo(window.position.0 + 2, window.position.1 + 3))?;
 
         let help_entries = vec![
             format!(
-                "Esc:{:>padding$}",
+                "󰈆 Esc:{:>padding$}",
                 "Quit",
-                padding = window.size.0 as usize - 7
-            ),
-            format!(
-                "Up/Down:{:>padding$}",
-                "Navigate between entries",
-                padding = window.size.0 as usize - 11
-            ),
-            format!(
-                "Ctrl-Up/Ctrl-Down:{:>padding$}",
-                "Navigate between entries and scroll",
-                padding = window.size.0 as usize - 21
-            ),
-            format!(
-                "Enter:{:>padding$}",
-                "Open",
                 padding = window.size.0 as usize - 9
             ),
             format!(
-                "Backspace:{:>padding$}",
-                "Go back",
+                "󰹺 Up/Down:{:>padding$}",
+                "Navigate between entries",
                 padding = window.size.0 as usize - 13
             ),
             format!(
-                "Home/End:{:>padding$}",
+                " Ctrl-Up/Ctrl-Down:{:>padding$}",
+                "Navigate between entries and scroll",
+                padding = window.size.0 as usize - 23
+            ),
+            format!(
+                "󰿄 Enter:{:>padding$}",
+                "Open",
+                padding = window.size.0 as usize - 11
+            ),
+            format!(
+                "󰌍 Backspace:{:>padding$}",
+                "Go back",
+                padding = window.size.0 as usize - 15
+            ),
+            format!(
+                "󰨿 Home/End:{:>padding$}",
                 "Go to first/last entry",
-                padding = window.size.0 as usize - 12
+                padding = window.size.0 as usize - 14
             ),
             format!(
-                "h:{:>padding$}",
+                "󰘓 h:{:>padding$}",
                 "Toggle hidden entries",
-                padding = window.size.0 as usize - 5
+                padding = window.size.0 as usize - 7
             ),
             format!(
-                "r:{:>padding$}",
+                "󰑕 r:{:>padding$}",
                 "Rename entry",
-                padding = window.size.0 as usize - 5
+                padding = window.size.0 as usize - 7
             ),
             format!(
-                "d:{:>padding$}",
+                "󰆴 d:{:>padding$}",
                 "Delete entry",
-                padding = window.size.0 as usize - 5
+                padding = window.size.0 as usize - 7
             ),
             format!(
-                "a:{:>padding$}",
+                " a:{:>padding$}",
                 "Add entry (name ending with '/' is a directory)",
-                padding = window.size.0 as usize - 5
+                padding = window.size.0 as usize - 7
             ),
             format!(
-                "?:{:>padding$}",
+                "󰞋 ?:{:>padding$}",
                 "Toggle this help menu",
-                padding = window.size.0 as usize - 5
+                padding = window.size.0 as usize - 7
             ),
         ];
 
         for entry in help_entries.iter() {
             stdout()
-                .queue(style::PrintStyledContent(entry.clone().dark_grey()))?
+                .queue(style::PrintStyledContent(entry.clone().white()))?
                 .queue(cursor::MoveToNextLine(1))?
                 .queue(cursor::MoveToColumn(window.position.0 + 2))?;
         }
@@ -489,7 +421,7 @@ impl NFM {
                         self.selection =
                             (self.selection + 1).min(self.entries.len().saturating_sub(1) as u16);
 
-                        if self.selection.saturating_sub(self.scroll) >= terminal::size()?.1 - 3 {
+                        if self.selection.saturating_sub(self.scroll) >= terminal::size()?.1 - 4 {
                             self.scroll += 1;
                         }
 
@@ -534,6 +466,7 @@ impl NFM {
                             .entries
                             .get(self.selection as usize)
                             .unwrap()
+                            .base
                             .file_name()
                             .into_string()
                             .unwrap();
@@ -543,6 +476,7 @@ impl NFM {
                                 self.entries
                                     .get(self.selection as usize)
                                     .unwrap()
+                                    .base
                                     .file_name()
                                     .len() as u16
                                     + 4,
@@ -566,14 +500,17 @@ impl NFM {
                                 self.entries
                                     .get(self.selection as usize)
                                     .unwrap()
+                                    .base
                                     .file_name()
                                     .into_string()
                                     .unwrap()
                                     .red()
-                                    .bold(),
+                                    .on_black()
+                                    .bold()
+                                    .italic(),
                             ))?
                             .execute(style::Print(
-                                "  Confirm removal (Enter/Esc)".dark_grey().italic(),
+                                "  Confirm removal (Enter/Esc)".blue().on_black().italic(),
                             ))?;
                     }
 
@@ -592,7 +529,7 @@ impl NFM {
                             break;
                         }
 
-                        let target = self.entries.get(self.selection as usize).unwrap().path();
+                        let target = self.entries.get(self.selection as usize).unwrap().base.path();
 
                         if target.is_dir() {
                             set_current_dir(target)?;
@@ -639,7 +576,7 @@ impl NFM {
                         self.draw_help()?;
                     }
 
-                    Action::Input(_) => {}
+                    _ => {}
                 },
 
                 Mode::Rename => match action {
@@ -671,6 +608,7 @@ impl NFM {
                                 .entries
                                 .get(self.selection as usize)
                                 .unwrap()
+                                .base
                                 .file_name()
                                 .into_string()
                                 .unwrap();
@@ -714,8 +652,8 @@ impl NFM {
                         self.mode = Mode::Normal;
 
                         let entry = self.entries.get(self.selection as usize).unwrap();
-                        let entry_name = entry.file_name().into_string().unwrap();
-                        let entry_type = entry.file_type()?;
+                        let entry_name = entry.base.file_name().into_string().unwrap();
+                        let entry_type = entry.base.file_type()?;
 
                         if entry_type.is_file() {
                             remove_file(entry_name)?;

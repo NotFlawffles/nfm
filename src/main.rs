@@ -3,6 +3,7 @@ use std::io::Result;
 use nfm::NFM;
 
 mod action;
+mod entry;
 mod mode;
 mod nfm;
 mod window;
